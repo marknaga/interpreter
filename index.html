@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>会議サマリー通訳</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* Layout: one-screen column. Summary fills the middle, English transcript sits below it, push-to-talk is pinned at the thumb. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --surface-2: #e3e8ee;
+  --fg: #141f2a;
+  --fg-muted: #5a6877;
+  --line: #cfd7e0;
+  --accent: #1f5fbf;
+  --accent-fg: #ffffff;
+  --rec: #c8371f;
+  --rec-fg: #ffffff;
+  --todo: #8a4b00;
+  --todo-bg: #fbe9cf;
+  --font-ui: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-en: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f161d;
+    --surface: #18222c;
+    --surface-2: #213040;
+    --fg: #e8eef4;
+    --fg-muted: #93a3b3;
+    --line: #2b3b4b;
+    --accent: #6ea4f0;
+    --accent-fg: #0b1522;
+    --rec: #ef6a52;
+    --rec-fg: #1d0a05;
+    --todo: #f3c27a;
+    --todo-bg: #3a2a10;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f161d;
+  --surface: #18222c;
+  --surface-2: #213040;
+  --fg: #e8eef4;
+  --fg-muted: #93a3b3;
+  --line: #2b3b4b;
+  --accent: #6ea4f0;
+  --accent-fg: #0b1522;
+  --rec: #ef6a52;
+  --rec-fg: #1d0a05;
+  --todo: #f3c27a;
+  --todo-bg: #3a2a10;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+h1 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+.tools { display: flex; gap: 6px; }
+header { flex-wrap: wrap; }
+.tool { white-space: nowrap; }
+.tool {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  min-height: 20px;
+}
+.dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--line);
+  flex: none;
+}
+body.holding .dot { background: var(--rec); }
+body.busy .dot { background: var(--accent); }
+
+.summary {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.latest {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--fg-muted);
+  margin-bottom: 2px;
+}
+.latest p { margin: 0; font-size: 19px; line-height: 1.55; font-weight: 500; }
+.points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.points li {
+  padding-left: 14px;
+  position: relative;
+  font-size: 16px;
+}
+.points li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0.72em;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.points li.todo::before { background: var(--todo); }
+.tag {
+  display: inline-block;
+  background: var(--todo-bg);
+  color: var(--todo);
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0 6px;
+  margin-right: 6px;
+}
+.empty { color: var(--fg-muted); font-size: 15px; margin: 0; }
+
+.transcript {
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  max-height: 22dvh;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-family: var(--font-en);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.transcript .interim { font-style: italic; opacity: 0.75; }
+
+.ptt {
+  flex: none;
+  height: 92px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.ptt small { font-size: 12px; font-weight: 500; opacity: 0.85; letter-spacing: 0.06em; }
+body.holding .ptt {
+  background: var(--rec);
+  color: var(--rec-fg);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--rec) 55%, transparent); }
+  50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--rec) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { body.holding .ptt { animation: none; } }
+.ptt:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 20;
+}
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px 16px 0 0;
+  padding: 18px max(16px, env(safe-area-inset-right, 0px)) max(18px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 92dvh;
+  overflow-y: auto;
+}
+.sheet h2 { margin: 0; font-size: 17px; }
+.sheet label { font-size: 13px; font-weight: 700; display: block; margin-bottom: 4px; }
+.sheet input, .sheet select {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+}
+.note { font-size: 13px; color: var(--fg-muted); margin: 0; line-height: 1.6; }
+.grp { display: flex; flex-direction: column; gap: 12px; }
+.warn { font-size: 13px; line-height: 1.6; margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--todo-bg); color: var(--todo); }
+.row { display: flex; gap: 8px; }
+.btn {
+  flex: 1;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+</style>
+</head>
+<body>
+<header>
+  <h1>会議サマリー通訳</h1>
+  <div class="tools">
+    <button class="tool" id="btnTranscript" type="button">英文</button>
+    <button class="tool" id="btnCopy" type="button">コピー</button>
+    <button class="tool" id="btnClear" type="button">クリア</button>
+    <button class="tool" id="btnSettings" type="button">設定</button>
+  </div>
+</header>
+
+<div class="status" id="statusRow"><span class="dot"></span><span id="statusText">準備中</span></div>
+
+<main class="summary" id="summary" aria-live="polite">
+  <div class="latest" id="latestBox" hidden>
+    <div class="label">直近の発言</div>
+    <p id="latestText"></p>
+  </div>
+  <div id="pointsBox" hidden>
+    <div class="label">ここまでの要点</div>
+    <ul class="points" id="points"></ul>
+  </div>
+  <p class="empty" id="emptyMsg">下のボタンを押している間、英語を聞き取ります。指を離すと最後の発言まで要約します。</p>
+</main>
+
+<section class="transcript" id="transcript" aria-label="聞き取った英文"></section>
+
+<button class="ptt" id="ptt" type="button">
+  <span id="pttLabel">押している間 聞き取り</span>
+  <small id="pttSub">English → 日本語要約</small>
+</button>
+
+<div class="overlay" id="settings" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <h2 id="setTitle">設定</h2>
+    <div>
+      <label for="provSel">要約に使うAI</label>
+      <select id="provSel">
+        <option value="gemini">Google Gemini（無料枠・既定）</option>
+        <option value="claude">Anthropic Claude（従量課金）</option>
+      </select>
+    </div>
+    <div class="grp" id="gemBox">
+      <div>
+        <label for="gKey">Gemini APIキー（Google AI Studioで無料取得）</label>
+        <input id="gKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza...">
+      </div>
+      <div>
+        <label for="gModel">モデル名</label>
+        <input id="gModel" type="text" list="gModels" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <datalist id="gModels">
+          <option value="gemini-3.5-flash-lite"></option>
+          <option value="gemini-3.1-flash-lite"></option>
+          <option value="gemini-3.6-flash"></option>
+          <option value="gemini-3.8-flash"></option>
+        </datalist>
+      </div>
+      <p class="warn">無料枠では、送った内容がGoogleのサービス改善に使われる可能性があります。社外秘の会議では使わないでください。</p>
+    </div>
+    <div class="grp" id="claBox" hidden>
+      <div>
+        <label for="apiKey">Anthropic APIキー</label>
+        <input id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="sk-ant-...">
+      </div>
+      <div>
+        <label for="modelSel">要約モデル</label>
+        <select id="modelSel">
+          <option value="claude-haiku-5-5">Haiku 5.5（速い）</option>
+          <option value="claude-sonnet-5-5">Sonnet 5.5（精度高め）</option>
+        </select>
+      </div>
+    </div>
+    <div>
+      <label for="ctxIn">会議の前提（任意）</label>
+      <input id="ctxIn" type="text" placeholder="例: 設備更新プロジェクトの定例、相手は米国本社の技術部門">
+    </div>
+    <p class="note">キーはこの端末のブラウザ内にだけ保存され、要約のたびに選んだAIへ直接送られます。聞き取りはiPhoneのSafariまたはAndroidのChromeの音声認識を使い、これは無料です。</p>
+    <div class="row">
+      <button class="btn" id="setCancel" type="button">閉じる</button>
+      <button class="btn primary" id="setSave" type="button">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var cfg = {
+    provider: store.get("ms_provider") || "gemini",
+    key: store.get("ms_key") || "",
+    model: store.get("ms_model") || "claude-haiku-5-5",
+    gkey: store.get("ms_gkey") || "",
+    gmodel: store.get("ms_gmodel") || "gemini-3.5-flash-lite",
+    ctx: store.get("ms_ctx") || ""
+  };
+  function hasKey() { return cfg.provider === "gemini" ? !!cfg.gkey : !!cfg.key; }
+
+  var st = {
+    holding: false,
+    rec: null,
+    interim: "",
+    english: [],      // finalized English chunks (whole meeting)
+    pending: "",      // finalized English not yet summarized
+    summary: "",      // running Japanese bullet summary
+    latest: "",
+    inFlight: false,
+    timer: null,
+    wake: null
+  };
+
+  var SYSTEM = [
+    "あなたは、日本のエンジニアが米国側との会議に参加するのを支える同時通訳アシスタントです。",
+    "入力は「これまでの日本語要約」と「新しく聞き取った英語」です。英語は音声認識の出力なので、聞き間違いや句読点の欠落があります。文脈から自然に補正して理解してください。",
+    "これらを統合し、次の形式だけを出力します。前置きや説明は書きません。",
+    "",
+    "[最新]",
+    "新しく聞き取った発言の要点を、日本語で1〜2文。",
+    "[全体]",
+    "会議全体の要点を日本語の箇条書きで、各行を「・」で始める。最大8行。",
+    "",
+    "ルール:",
+    "- 数字、単位、日付、金額、人名、会社名、型式は正確に残す。",
+    "- 話者が日本側に質問・依頼・確認を求めた事項、期限、決定事項は、その行の先頭に【要対応】を付ける。",
+    "- 新しい情報が出たら該当行を更新し、重要でなくなった古い行は統合・削除して8行以内に保つ。",
+    "- 推測や補足を足さない。聞き取れなかった部分は「（聞き取り不明）」と書く。",
+    "- 工事、設備、契約、スケジュール、コストの話題が多い想定で、専門用語は業界で通じる日本語にする。"
+  ].join("\n");
+
+  /* ---------- UI helpers ---------- */
+  function setStatus(text) { $("statusText").textContent = text; }
+  function setBusy(b) { document.body.classList.toggle("busy", b); }
+
+  function renderSummary() {
+    var hasLatest = !!st.latest, hasSummary = !!st.summary;
+    $("latestBox").hidden = !hasLatest;
+    $("pointsBox").hidden = !hasSummary;
+    $("emptyMsg").hidden = hasLatest || hasSummary;
+    $("latestText").textContent = st.latest;
+    var ul = $("points");
+    while (ul.firstChild) ul.removeChild(ul.firstChild);
+    st.summary.split("\n").forEach(function (line) {
+      var t = line.replace(/^[\s・\-\*•]+/, "").trim();
+      if (!t) return;
+      var li = document.createElement("li");
+      if (t.indexOf("【要対応】") === 0) {
+        li.className = "todo";
+        var tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = "要対応";
+        li.appendChild(tag);
+        li.appendChild(document.createTextNode(t.replace("【要対応】", "").trim()));
+      } else {
+        li.textContent = t;
+      }
+      ul.appendChild(li);
+    });
+    var box = $("summary");
+    box.scrollTop = 0;
+  }
+
+  function renderTranscript() {
+    var el = $("transcript");
+    while (el.firstChild) el.removeChild(el.firstChild);
+    var all = st.english.join(" ");
+    if (all.length > 900) all = "…" + all.slice(-900);
+    el.appendChild(document.createTextNode(all + (all && st.interim ? " " : "")));
+    if (st.interim) {
+      var i = document.createElement("span");
+      i.className = "interim";
+      i.textContent = st.interim;
+      el.appendChild(i);
+    }
+    if (!all && !st.interim) el.textContent = "聞き取った英文がここに表示されます。";
+    el.scrollTop = el.scrollHeight;
+  }
+
+  /* ---------- Summarization ---------- */
+  function buildUserMsg(prevSummary, chunk) {
+    return (cfg.ctx ? "【会議の前提】" + cfg.ctx + "\n\n" : "") +
+      "【これまでの日本語要約】\n" + (prevSummary || "（まだなし）") +
+      "\n\n【新しく聞き取った英語】\n" + chunk;
+  }
+
+  async function callApi(prevSummary, chunk) {
+    return cfg.provider === "gemini" ? callGemini(prevSummary, chunk) : callClaude(prevSummary, chunk);
+  }
+
+  async function callGemini(prevSummary, chunk) {
+    var ctl = new AbortController();
+    var to = setTimeout(function () { ctl.abort(); }, 30000);
+    try {
+      var url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+        encodeURIComponent(cfg.gmodel.trim()) + ":generateContent";
+      var res = await fetch(url, {
+        method: "POST",
+        signal: ctl.signal,
+        headers: { "content-type": "application/json", "x-goog-api-key": cfg.gkey },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          contents: [{ role: "user", parts: [{ text: buildUserMsg(prevSummary, chunk) }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 }
+        })
+      });
+      if (!res.ok) {
+        var detail = "";
+        try { detail = (await res.json()).error.message || ""; } catch (e) {}
+        var err = new Error(detail || ("HTTP " + res.status));
+        err.status = res.status;
+        throw err;
+      }
+      var data = await res.json();
+      var cand = data.candidates && data.candidates[0];
+      var parts = (cand && cand.content && cand.content.parts) || [];
+      var text = parts.filter(function (p) { return !p.thought; })
+        .map(function (p) { return p.text || ""; }).join("");
+      if (!text.trim()) throw new Error("AIから応答がありませんでした");
+      return text;
+    } finally {
+      clearTimeout(to);
+    }
+  }
+
+  async function callClaude(prevSummary, chunk) {
+    var userMsg =
+      (cfg.ctx ? "【会議の前提】" + cfg.ctx + "\n\n" : "") +
+      "【これまでの日本語要約】\n" + (prevSummary || "（まだなし）") +
+      "\n\n【新しく聞き取った英語】\n" + chunk;
+    var ctl = new AbortController();
+    var to = setTimeout(function () { ctl.abort(); }, 30000);
+    try {
+      var res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: ctl.signal,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": cfg.key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: cfg.model,
+          max_tokens: 700,
+          system: SYSTEM,
+          messages: [{ role: "user", content: userMsg }]
+        })
+      });
+      if (!res.ok) {
+        var detail = "";
+        try { detail = (await res.json()).error.message || ""; } catch (e) {}
+        var err = new Error(detail || ("HTTP " + res.status));
+        err.status = res.status;
+        throw err;
+      }
+      var data = await res.json();
+      var text = (data.content || []).map(function (b) { return b.text || ""; }).join("");
+      return text;
+    } finally {
+      clearTimeout(to);
+    }
+  }
+
+  function parseOutput(text) {
+    var m = text.match(/\[最新\]\s*([\s\S]*?)\s*\[全体\]\s*([\s\S]*)/);
+    if (m) return { latest: m[1].trim(), summary: m[2].trim() };
+    return { latest: "", summary: text.trim() };
+  }
+
+  async function summarize(force) {
+    if (st.inFlight) return;
+    var chunk = st.pending.trim();
+    if (!chunk) return;
+    if (!force && chunk.length < 40) return;
+    if (!hasKey()) { openSettings(); setStatus("APIキーを設定してください"); return; }
+    st.inFlight = true;
+    st.pending = "";
+    setBusy(true);
+    setStatus(st.holding ? "聞き取り中・要約を更新中" : "要約中");
+    var ok = false;
+    try {
+      var out = parseOutput(await callApi(st.summary, chunk));
+      if (out.summary) st.summary = out.summary;
+      st.latest = out.latest || st.latest;
+      renderSummary();
+      ok = true;
+    } catch (e) {
+      st.pending = chunk + (st.pending ? " " + st.pending : "");
+      var msg = e && e.name === "AbortError" ? "通信がタイムアウトしました" :
+        e && (e.status === 401 || e.status === 403) ? "APIキーが正しくありません（設定を確認）" :
+        e && e.status === 404 ? "モデル名が見つかりません（設定を確認）" :
+        e && e.status === 429 ? "無料枠の上限に達しました。少し待つか、モデルを変えてください" :
+        "要約に失敗: " + (e && e.message ? e.message : "通信エラー");
+      setStatus(msg);
+    } finally {
+      st.inFlight = false;
+      setBusy(false);
+    }
+    if (ok) {
+      setStatus(st.holding ? "聞き取り中" : "待機中");
+      if (st.pending.trim().length >= 40 || (!st.holding && st.pending.trim())) summarize(!st.holding);
+    }
+  }
+
+  /* ---------- Speech recognition ---------- */
+  function addFinal(t) {
+    t = (t || "").trim();
+    if (!t) return;
+    st.english.push(t);
+    st.pending += (st.pending ? " " : "") + t;
+  }
+
+  function launch() {
+    var rec = new SR();
+    st.rec = rec;
+    rec.lang = "en-US";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.onresult = function (e) {
+      var interim = "";
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        var r = e.results[i];
+        if (r.isFinal) addFinal(r[0].transcript);
+        else interim += r[0].transcript;
+      }
+      st.interim = interim.trim();
+      renderTranscript();
+    };
+    rec.onerror = function (e) {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        st.holding = false;
+        document.body.classList.remove("holding");
+        $("pttLabel").textContent = "押している間 聞き取り";
+        clearInterval(st.timer);
+        st.timer = null;
+        setStatus("マイクが許可されていません。Safari（またはChrome）で直接開き、マイクを許可してください");
+      } else if (e.error === "audio-capture") {
+        setStatus("マイクが見つかりません");
+      } else if (e.error === "network") {
+        setStatus("音声認識の通信エラー");
+      }
+    };
+    rec.onend = function () {
+      if (st.holding) {
+        try { launch(); } catch (err) {}
+      } else {
+        if (st.interim) { addFinal(st.interim); st.interim = ""; renderTranscript(); }
+        summarize(true);
+        setStatus(st.inFlight ? "要約中" : "待機中");
+      }
+    };
+    rec.start();
+  }
+
+  function press() {
+    if (st.holding) return;
+    if (!SR) return;
+    st.holding = true;
+    document.body.classList.add("holding");
+    setStatus("聞き取り中");
+    $("pttLabel").textContent = "聞き取り中… 離すと要約";
+    try { launch(); } catch (err) { setStatus("聞き取りを開始できません"); }
+    clearInterval(st.timer);
+    st.timer = setInterval(function () { summarize(false); }, 8000);
+    if (!st.wake && navigator.wakeLock && navigator.wakeLock.request) {
+      navigator.wakeLock.request("screen").then(function (w) { st.wake = w; w.addEventListener("release", function () { st.wake = null; }); }).catch(function () {});
+    }
+  }
+
+  function release() {
+    if (!st.holding) return;
+    st.holding = false;
+    document.body.classList.remove("holding");
+    $("pttLabel").textContent = "押している間 聞き取り";
+    clearInterval(st.timer);
+    st.timer = null;
+    try { if (st.rec) st.rec.stop(); } catch (err) {}
+    setStatus("最後の発言を処理中");
+  }
+
+  /* ---------- Settings ---------- */
+  function syncProvider() {
+    var g = $("provSel").value === "gemini";
+    $("gemBox").hidden = !g;
+    $("claBox").hidden = g;
+  }
+  function openSettings() {
+    $("provSel").value = cfg.provider;
+    $("gKey").value = cfg.gkey;
+    $("gModel").value = cfg.gmodel;
+    $("apiKey").value = cfg.key;
+    $("modelSel").value = cfg.model;
+    $("ctxIn").value = cfg.ctx;
+    syncProvider();
+    $("settings").hidden = false;
+  }
+  function closeSettings() { $("settings").hidden = true; }
+
+  /* ---------- Wiring ---------- */
+  var ptt = $("ptt");
+  if (!SR) {
+    ptt.disabled = true;
+    $("pttLabel").textContent = "この端末では使えません";
+    $("pttSub").textContent = "iPhoneはSafari、AndroidはChromeで開いてください";
+    setStatus("音声認識に未対応のブラウザです");
+  } else {
+    setStatus(hasKey() ? "待機中" : "初回は設定からAPIキーを入力");
+  }
+
+  ptt.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    try { ptt.setPointerCapture(e.pointerId); } catch (err) {}
+    press();
+  });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (n) {
+    ptt.addEventListener(n, release);
+  });
+  ptt.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  ptt.addEventListener("keydown", function (e) {
+    if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); press(); }
+  });
+  ptt.addEventListener("keyup", function (e) {
+    if (e.key === " " || e.key === "Enter") release();
+  });
+  document.addEventListener("visibilitychange", function () { if (document.hidden) release(); });
+
+  $("btnSettings").addEventListener("click", openSettings);
+  $("setCancel").addEventListener("click", closeSettings);
+  $("setSave").addEventListener("click", function () {
+    cfg.provider = $("provSel").value;
+    cfg.gkey = $("gKey").value.trim();
+    cfg.gmodel = $("gModel").value.trim() || "gemini-3.5-flash-lite";
+    cfg.key = $("apiKey").value.trim();
+    cfg.model = $("modelSel").value;
+    cfg.ctx = $("ctxIn").value.trim();
+    store.set("ms_provider", cfg.provider);
+    store.set("ms_gkey", cfg.gkey);
+    store.set("ms_gmodel", cfg.gmodel);
+    store.set("ms_key", cfg.key);
+    store.set("ms_model", cfg.model);
+    store.set("ms_ctx", cfg.ctx);
+    closeSettings();
+    setStatus(hasKey() ? "待機中" : "APIキーが未設定です");
+  });
+  $("provSel").addEventListener("change", syncProvider);
+
+  $("btnTranscript").addEventListener("click", function () {
+    var el = $("transcript");
+    el.hidden = !el.hidden;
+    $("btnTranscript").textContent = el.hidden ? "英文" : "英文を隠す";
+  });
+
+  $("btnClear").addEventListener("click", function () {
+    if (st.holding) return;
+    st.english = []; st.pending = ""; st.summary = ""; st.latest = ""; st.interim = "";
+    renderSummary(); renderTranscript();
+    setStatus("クリアしました");
+  });
+
+  $("btnCopy").addEventListener("click", function () {
+    var text = (st.latest ? "【直近】" + st.latest + "\n\n" : "") + st.summary;
+    if (!text.trim()) { setStatus("コピーする内容がありません"); return; }
+    var done = function () { setStatus("要約をコピーしました"); };
+    var fallback = function () {
+      var ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) { setStatus("コピーできませんでした"); }
+      document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else fallback();
+  });
+
+  renderSummary();
+  renderTranscript();
+})();
+</script>
+</body>
+</html>
